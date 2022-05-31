@@ -7,9 +7,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-### Morgan Duran
-#### mrd2926
-
 ##### gene_ontology_primary_id value of GO:0018298
 
 ```{r,warning=FALSE,message=FALSE}
