@@ -1,0 +1,177 @@
+---
+title: "BIO321G Final Project (FINAL DRAFT)"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Morgan Duran
+#### mrd2926
+
+##### gene_ontology_primary_id value of GO:0018298
+
+```{r,warning=FALSE,message=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(DESeq2)
+library(pheatmap)
+```
+
+This report aims to analyze the RNAseq expression patterns of the assigned gene set GO:0018298. The Gene Ontology system defines GO:0018298 as a set of genes concerned with the covalent or noncovalent attachment of a chromophore to a protein. This gene set consists of 30 genes, and has been analyzed under a series of different sample genotypes:
+
+**Col** - wild-type Arabidopsis thaliana,
+
+**14B** - a mutant lacking two genes for a plant specific translation initiation factor, eIFiso4G1 (AT5g57870) and eIFiso4G2 (At2g24050), and
+
+**4G** - a mutant lacking the one gene for eIF4G (AT3g60240), a translation factor that is more similar to those of other eukaryotes.
+
+
+Samples were also collected from two different time points / light conditions: 
+
+**“End day”** (light) and  
+
+**“Ex dark”** (dark).
+
+This report aims to primarily understand how the differences in gene expression between light and dark conditions vary by genotype. In order to do this, DESeq will be used to look for genes with significant interaction terms between genotype and timepoint.
+
+The corresponding files, objects, and functions used throughout this report are loaded from the file below.
+
+```{r}
+source("bio321g_rnaseq_utils.R")
+```
+
+A DESeqDataSet object is constructed using DESeqDataSetFromMatrix with the aim of performing a hypothesis test specifically for the significance of the interaction term time:genotype in the model. The results from this test are used to discover (1) the number of genes from the full data set we would conclude that there was evidence of a significant time:genotype interaction term if we wanted to keep the false discovery rate (FDR) ≤ 0.10 (or 10%) and (2) the expected number of false positive discoveries.
+
+```{r,message=FALSE}
+DESeqDataSet = DESeqDataSetFromMatrix(
+  countData = rnaCounts,
+  colData = sampleAnnotation,
+  design = ~ time + genotype + time:genotype
+)
+
+glimpse(DESeqDataSet)
+
+DESeqDataSet = DESeq(DESeqDataSet, test="LRT", reduced =~time+genotype)
+results(DESeqDataSet) %>% as.data.frame() %>% filter(padj<=0.1) %>% summarize(numSignificant=n(), numFalsePos=(n()*0.1))
+```
+
+The number of genes from the full data set with evidence of significant time:genotype interaction while keeping FDR less than or equal to 10% is 1429. Of these 1429, we would expect 142.9 to be false positive discoveries. We set our wanted FDR to be no more than 10%, so we would expect the number of false discoveries to be 10% of the number of genes found to have significant interaction.
+
+The data was normalized with DESeq and log-transformed with an offset of 1. This normalized data is stored as lgNorm.
+
+```{r}
+normed = counts(DESeqDataSet, normalized=TRUE)
+normed = normed[rowSums(normed) > 0, ]
+lgNorm = log2(normed + 1)
+glimpse(lgNorm)
+```
+
+
+A principal component analysis (PCA) plot was created from the results of running PCA on the normalized data.
+
+```{r}
+pca = prcomp(t(lgNorm))
+
+pcaData = data.frame(pca$x[ , 1:2])
+pcaData$group = sampleAnnotation[rownames(pcaData), "group"]
+pcaData$sample = rownames(pcaData)
+
+glimpse(pcaData)
+
+theme_set(theme_bw())
+ggplot(pcaData, aes(x=PC1, y=PC2, color=group, label=sample)) +
+  geom_point(size=2.5, alpha=0.75) +
+  scale_color_manual(values=groupColors)
+```
+
+In this plot, we see that PC1 was able to distinguish the samples collected under light conditions from those collected under dark conditions. In this horizontal separation, those groups associated with light conditions (14BENDDAY, 4GENDDAY, COLENDDAY) fall to the left and groups associated with dark conditions (14BEXDARK, 4GEXDARK, COLEXDARK) fall to the right. The separation of groups by time point/light conditions by PC1 may suggest that gene expression varied most due to this variable, as opposed to variation in gene expression being caused by other experimental conditions (i.e., sample genotype). 
+
+In the vertical separation of groups by PC2, groups associated with the 14B sample genotype are separated from other genotype sample groups. This separation may suggest that gene expression in samples in the 14B genotype varied significantly from the other two genotype sample groups. Additionally, the lack of separation seen in the clustering of (1) 4GENDDAY and COLENDDAY and (2) 4GEXDARK and COLEXDARK may suggest that gene expression did not vary much between the Col and 4G sample genotypes. 
+
+geneNames is the vector extracted containing the ids of the genes associated with gene GO:0018298. The names of the genes in geneNames are extracted from goAssociations and are used to subset the rows of geneNamesAndDescriptions in order to create a dataframe containing only the genes associated with GO:0018298. This dataframe, geneSet, contains columns "gene", "symbol", and "description", and is exported as file "gene_set.tsv" and is provided alongside this report.
+
+```{r,warning=FALSE,message=FALSE}
+geneSet = goAssociations[goAssociations$gene_ontology_primary_id == "GO:0018298", ]
+genes = geneSet$gene
+
+geneNames = c()
+for (x in 1:30) {
+  geneNames = c(geneNames, as.character(genes[x]))
+}
+
+geneSet = geneNamesAndDescriptions[geneNames, ]
+
+write.table(geneSet, "gene_set.tsv", sep="\t", row.names = FALSE, quote = FALSE)
+```
+
+lgNorm is filtered to contain only the genes associated with GO:0018298, and this new dataframe is assigned to the variablee lgGo.
+
+```{r}
+lgGo = as.data.frame(lgNorm)
+lgGo = lgGo[geneSet$gene, ]
+glimpse(lgGo)
+```
+
+A PCA plot is created from PCA ran on lgGo. While this second instance of PCA is similar to the one previously shown in this report, the scope of data used to create it is much more limited (using only 30 rows compared to over 18,000 previously used in the full-gene-set plot), though it is much more specific in that it only references genes associated with gene GO:0018298.
+
+```{r}
+pca2 = prcomp(t(lgGo))
+
+pcaData2 = data.frame(pca2$x[ , 1:2])
+pcaData2$group = sampleAnnotation[rownames(pcaData2), "group"]
+pcaData2$sample = rownames(pcaData2)
+
+glimpse(pcaData2)
+
+theme_set(theme_bw())
+ggplot(pcaData2, aes(x=PC1, y=PC2, color=group, label=sample)) +
+  geom_point(size=2.5, alpha=0.75) +
+  scale_color_manual(values=groupColors)
+```
+
+In this second PCA plot, PC1 appears to be equally as effective at creating a wide horizontal separation, with three groups on each side of the gap in the middle. These "left" and "right" groups are the same as seen in the previous full-gene-set plot, with 14BENDDAY, 4GENDDAY, COLENDDAY falling to the left and 14BEXDARK, 4GEXDARK, COLEXDARK three groups falling to the right. However, unlike in the full-gene-set PCA plot, we see a different set of separation created from PC2. In the lefthand group, we see each of the three groups vertically separated from one another, though these three groups are not separated as far as seen in the other PCA plot. In the right group, 4GENDARK and COLEXDARK are not separated from each other, similarly to the full-gene-set PCA plot. While 14BEXDARK is not clumped in with the other two groups on the right side, it does not experience the same level of vertical separation that it did in the previous PCA plot.
+
+A heatmap and cluster dendogram is created from the log-transformed normalized data. Upper and lower bounds are set on the values represented on the heatmap, such that the range exhibited for expression level difference greater than 2 log2 units greater than the mean is limited to +2 and any expression level difference less than 2 log2 units less than the mean is limited to -2. The sample labels and cluster dendogram live on the top and bottom edges of the chart while the gene labels and cluster dendogram live on the left and right edges.
+
+```{r fig.asp = 1.5}
+heatData = lgGo - rowMeans(lgGo)
+heatData[heatData > 2] = 2
+heatData[heatData < -2] = -2
+pheatmap(
+  heatData,
+  color = colorRampPalette(c(
+  "dodgerblue", "lightskyblue",
+  "white",
+  "lightgoldenrod", "orangered"
+  ))(100),
+  clustering_method = "average",
+  labels_row=geneNamesAndDescriptions[rownames(heatData), "symbol"]
+)
+```
+
+In the sample cluster dendogram, the two largest clusters before everything is joined together are those taken during the day and those taken in the dark. Prior to this two-group clustering in the sample clusters, sample genotypes of the same type are clustered together. On both the "day" and the "night" side, the 4G mutants experience clustering amongst themselves prior to other sample genotype groups. 
+
+In the gene cluster dendogram, genes that have similar expression under the sample circumstances tend to be clustered together earlier. For instance, a large cluster is formed, composed of genes that have higher expression in "dark" samples and lower expression in "day" samples. In the gene cluster dendogram, the two groups that exist before final joining appear to be those that experience smaller changes in expression in different circumstances, and those that experience massive changes in expression in different circumstances. These final two clusters are rather interesting in that the majority of genes exist under one cluster and only five exist in the other cluster just prior to final joining. These five genes that experience very different levels of expression in day vs night all are genes that encode photoreceptors and structures in the cell directly responsible for light harvesting. 
+
+One last interesting note about the heatmap is that most of the differences observed across each gene is due to the light conditions under which the sample was collected, rather than the sample genotype. There are a few pockets of genes clustered together (earlier on) that experience different levels of expression from what appears to be due to sample genotype. One instance of this is LHCB4.3, Lhca6, and PHR2 all experience higher than normal levels of expressioon in the 14B genotype as opposed to other genotypes during end day conditions. This same group of genes also experiences lower levels of expression in ex dark conditions in the Col and 4G genotypes as compared to expression in 14BEXDARK. Another instance of this is in genes LHCB5, LHCB4.1, CAB1, and LHCA3. This group of genes experiences higher than normal levels of expression in the 14B genotype and end day conditions, though they experience lower levels of expression in all other genotypes during end day conditions. 
+
+
+In this last chart, lgGo is filtered to contain only the 9 genes that had the lowest p-values, according to the results of DESeq. This chart displays the level of expression of each gene in light vs. dark environments and in three sample genotypes. The main goal of analysis of this chart is to see how differences in expression between timepoints vary between genotypes.
+
+
+```{r}
+lgGoFilter = results(DESeqDataSet)[geneSet$gene, ] %>% as.data.frame() %>% arrange(pvalue) %>% head(9) %>% rownames()
+print( stripchart321g(lgGo[lgGoFilter, ], sampleAnnotation) )
+```
+
+Genes AT1G09570 and AT2G05100 (top center & top right facets) experience very similar changes in gene expression due to changes in light and genotype conditions. Across all three sample genotypes, these genes experience a wide difference in expression due to light, experiencing higher levels of gene expression in dark conditions. 
+
+Genes AT1G29930 and AT1G61520 (middle right & bottom center facets) also have very similar levels of expression in the same environmental circumstances. Both these genes experience small changes in expression levels due to light in 14B genotype, but experience a slightly larger difference due to light in Col and an even larger difference in expression due to light in 4G genotype. 
+
+Many of the remaining genes displayed in this chart experience somewhat similar patterns of expression, such that in two genotypes expression is widely affected by light conditions and in the third genotype light appears to play less of a role in gene expression. For instance, AT1G15820 (middle left facet) experiences a large change in gene expression due to light in 14B and 4G genotypes, but does not experience the same dimished gene expression due to light conditions in Col genotype.
+
+While nearly all of these genes experience higher levels of expression in dark envrionments, gene AT2G47590 (top right facet) is the only gene displayed that experiences higher expression levels in light conditions.
+
