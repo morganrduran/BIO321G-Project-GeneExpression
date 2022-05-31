@@ -1,5 +1,5 @@
 ---
-title: "BIO321G Final Project (FINAL DRAFT)"
+title: "BIO321G Final Project"
 output: html_document
 ---
 
