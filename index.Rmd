@@ -1,5 +1,6 @@
 ---
 title: "BIO321G Final Project"
+author: "Morgan Duran"
 output: html_document
 ---
 
