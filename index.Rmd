@@ -1,6 +1,5 @@
 ---
-title: "BIO321G Final Project"
-author: "Morgan Duran"
+title: "Expression Pattern Analysis"
 output: html_document
 ---
 
